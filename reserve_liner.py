@@ -9,8 +9,6 @@ import os
 from os.path import join, dirname
 from dotenv import load_dotenv
  
-'''
- 
 load_dotenv(verbose=True)
  
 dotenv_path = join(dirname(__file__), '.env')
@@ -28,13 +26,11 @@ parser.add_argument("--debug", action="store_true", help="デバッグモードO
 args = parser.parse_args()
 
 
-'''
-
 # Chromeのドライバーを指定
 driver = webdriver.Chrome()
 
-# 対象のページを開く
-driver.get(os.environ.get("KEIO_URL"))
+# 京王チケットレスのページを開く
+driver.get(os.environ.get("KEIO"))
 
 # ページが読み込まれるのを待つ
 time.sleep(2)
@@ -108,4 +104,3 @@ else:
 # 数秒待ってから終了
 time.sleep(10)
 quit()
-
