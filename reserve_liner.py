@@ -30,7 +30,7 @@ args = parser.parse_args()
 driver = webdriver.Chrome()
 
 # 京王チケットレスのページを開く
-driver.get(os.environ.get("KEIO"))
+driver.get(os.environ.get("KEIO_URL"))
 
 # ページが読み込まれるのを待つ
 time.sleep(2)
