@@ -9,6 +9,8 @@ import os
 from os.path import join, dirname
 from dotenv import load_dotenv
  
+'''
+ 
 load_dotenv(verbose=True)
  
 dotenv_path = join(dirname(__file__), '.env')
@@ -25,6 +27,8 @@ parser.add_argument("--target", help="予約する便を指定", type=int, defau
 parser.add_argument("--debug", action="store_true", help="デバッグモードON")
 args = parser.parse_args()
 
+
+'''
 
 # Chromeのドライバーを指定
 driver = webdriver.Chrome()
@@ -104,3 +108,4 @@ else:
 # 数秒待ってから終了
 time.sleep(10)
 quit()
+
