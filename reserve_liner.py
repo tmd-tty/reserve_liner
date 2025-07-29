@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--date", help="日付を指定yyyymmdd", default=today)
 parser.add_argument("--retry", help="リトライ回数を設定。", type=int, default=20)
 parser.add_argument("--target", help="予約する便を指定", type=int, default=2)
+parser.add_argument("--point", action="store_true", help="point購入モードON")
 parser.add_argument("--debug", action="store_true", help="デバッグモードON")
 args = parser.parse_args()
 
@@ -97,6 +98,8 @@ driver.find_element(By.ID, "purchaseSettlementConfirm:agreement").click()
 # 以下で購入確定
 if args.debug:
     print("debugモードで終了しました。")
+elif args.point:
+    driver.find_element(By.ID, "purchaseSettlementConfirm:nextPointBtn").click()
 else:
     driver.find_element(By.ID, "purchaseSettlementConfirm:nextPaymentBtn").click()
 
@@ -104,3 +107,4 @@ else:
 # 数秒待ってから終了
 time.sleep(10)
 quit()
+
