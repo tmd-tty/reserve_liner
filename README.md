@@ -1,11 +1,15 @@
 # 実行方法
 
 ```
-python reserve_liner.py --date 20250602 --retry 1`
+python reserve_liner.py --date 20260602 --retry 200
 ```
 
 ```
-python reserve_liner.py --date 20250602 --retry 1` --debug
+python reserve_liner.py --date 20260602 --retry 200 --point
+```
+
+```
+python reserve_liner.py --date 20260602 --retry 200 --debug
 ```
 
 # option
