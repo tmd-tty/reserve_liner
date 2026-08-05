@@ -1,22 +1,27 @@
 # 実行方法
 
 ```
-python reserve_liner.py --date 20260602 --retry 200
+npm install
+npx playwright install chromium
 ```
 
 ```
-python reserve_liner.py --date 20260602 --retry 200 --point
+npm start -- --date 20260602 --retry 200
 ```
 
 ```
-python reserve_liner.py --date 20260602 --retry 200 --debug
+npm start -- --date 20260602 --retry 200 --point
+```
+
+```
+npm start -- --date 20260602 --retry 200 --debug
 ```
 
 # option
 
 + `--date yyyymmdd`
   + yyyymmddで予約したい日付を設定
-  + デフォルト実行日
+  + デフォルト翌日
 + `--retry 1`
   + リトライ回数を指定
   + デフォルト20(3秒*20回=1分)
@@ -41,4 +46,3 @@ python reserve_liner.py --date 20260602 --retry 200 --debug
 
 # TODO
 + 時間の指定ができるようにする
-+ 画面遷移ごとのログを出力する
