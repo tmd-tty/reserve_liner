@@ -1,5 +1,5 @@
 import { chromium, type Page } from "playwright";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,11 @@ const program = new Command();
 program
   .option("--date <yyyymmdd>", "日付を指定yyyymmdd", tomorrowStr())
   .option("--today", "当日の日付を指定する(--dateより優先)", false)
+  .addOption(
+    new Option("--destination <code>", "予約する行き先を指定(R003: 京王八王子・高尾山口・高幡不動→新宿方面 / R004: 橋本・京王多摩センター→新宿方面)")
+      .choices(["R003", "R004"])
+      .default("R004"),
+  )
   .option("--retry <count>", "リトライ回数を設定。", (v) => parseInt(v, 10), 20)
   .option("--target <index>", "予約する便を指定", (v) => parseInt(v, 10), 2)
   .option("--point", "point購入モードON", false)
@@ -40,6 +45,7 @@ program.parse(process.argv);
 const opts = program.opts<{
   date: string;
   today: boolean;
+  destination: "R003" | "R004";
   retry: number;
   target: number;
   point: boolean;
@@ -63,10 +69,10 @@ async function login(page: Page, id: string, password: string) {
   await page.locator(byId("login:submit")).click();
 }
 
-async function selectDestinationAndDate(page: Page, dateStr: string) {
+async function selectDestinationAndDate(page: Page, destination: string, dateStr: string) {
   console.log("################ 予約選択画面");
   // 目的地
-  await page.locator(byId("trainData:destination")).selectOption("R004");
+  await page.locator(byId("trainData:destination")).selectOption(destination);
 
   // 日付: option一覧をブラウザ側でまとめて評価し、往復回数を減らす
   const dateSelect = page.locator(byId("trainData:jyoushaDate"));
@@ -144,7 +150,7 @@ async function main() {
 
   await openTopPage(page, process.env.KEIO_URL!);
   await login(page, process.env.KEIO_ID!, process.env.KEIO_PASSWORD!);
-  await selectDestinationAndDate(page, targetDateStr);
+  await selectDestinationAndDate(page, opts.destination, targetDateStr);
 
   const reserved = await waitForAvailableTrainAndReserve(page, opts.target, opts.retry);
 
