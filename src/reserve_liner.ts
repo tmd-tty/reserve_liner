@@ -10,18 +10,27 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 // id属性に ":" を含む要素はCSSエスケープを避けるため属性セレクタで指定する
 const byId = (id: string) => `[id="${id}"]`;
 
+function formatDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function todayStr(): string {
+  return formatDate(new Date());
+}
+
 function tomorrowStr(): string {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const y = tomorrow.getFullYear();
-  const m = String(tomorrow.getMonth() + 1).padStart(2, "0");
-  const d = String(tomorrow.getDate()).padStart(2, "0");
-  return `${y}${m}${d}`;
+  return formatDate(tomorrow);
 }
 
 const program = new Command();
 program
   .option("--date <yyyymmdd>", "日付を指定yyyymmdd", tomorrowStr())
+  .option("--today", "当日の日付を指定する(--dateより優先)", false)
   .option("--retry <count>", "リトライ回数を設定。", (v) => parseInt(v, 10), 20)
   .option("--target <index>", "予約する便を指定", (v) => parseInt(v, 10), 2)
   .option("--point", "point購入モードON", false)
@@ -30,13 +39,16 @@ program.parse(process.argv);
 
 const opts = program.opts<{
   date: string;
+  today: boolean;
   retry: number;
   target: number;
   point: boolean;
   debug: boolean;
 }>();
 
-console.log(opts.date);
+const targetDateStr = opts.today ? todayStr() : opts.date;
+
+console.log(`予約対象日: ${targetDateStr}`);
 
 async function openTopPage(page: Page, url: string) {
   console.log("################ トップページ");
@@ -132,7 +144,7 @@ async function main() {
 
   await openTopPage(page, process.env.KEIO_URL!);
   await login(page, process.env.KEIO_ID!, process.env.KEIO_PASSWORD!);
-  await selectDestinationAndDate(page, opts.date);
+  await selectDestinationAndDate(page, targetDateStr);
 
   const reserved = await waitForAvailableTrainAndReserve(page, opts.target, opts.retry);
 

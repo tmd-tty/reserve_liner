@@ -22,6 +22,8 @@ npm start -- --date 20260602 --retry 200 --debug
 + `--date yyyymmdd`
   + yyyymmddで予約したい日付を設定
   + デフォルト翌日
++ `--today`
+  + 当日の日付を指定する(`--date`より優先)
 + `--retry 1`
   + リトライ回数を指定
   + デフォルト20(3秒*20回=1分)
