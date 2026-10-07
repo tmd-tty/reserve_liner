@@ -1,5 +1,5 @@
 import { chromium, type Page } from "playwright";
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,15 @@ function tomorrowStr(): string {
   return formatDate(tomorrow);
 }
 
+// 便の指定は発車時刻(HH:MM)。"7:10" のような表記は "07:10" に揃える
+function parseDepartureTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    throw new InvalidArgumentError("発車時刻をHH:MM形式で指定してください。例: 07:10");
+  }
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
 const program = new Command();
 program
   .option("--date <yyyymmdd>", "日付を指定yyyymmdd", tomorrowStr())
@@ -37,7 +46,7 @@ program
       .default("R004"),
   )
   .option("--retry <count>", "リトライ回数を設定。", (v) => parseInt(v, 10), 20)
-  .option("--target <index>", "予約する便を指定", (v) => parseInt(v, 10), 2)
+  .option("--target <HH:MM>", "予約する便を発車時刻で指定 例: 07:10", parseDepartureTime, "07:10")
   .option("--point", "point購入モードON", false)
   .option("--debug", "デバッグモードON", false);
 program.parse(process.argv);
@@ -47,7 +56,7 @@ const opts = program.opts<{
   today: boolean;
   destination: "R003" | "R004";
   retry: number;
-  target: number;
+  target: string;
   point: boolean;
   debug: boolean;
 }>();
@@ -55,6 +64,7 @@ const opts = program.opts<{
 const targetDateStr = opts.today ? todayStr() : opts.date;
 
 console.log(`予約対象日: ${targetDateStr}`);
+console.log(`予約対象便: ${opts.target}発`);
 
 async function openTopPage(page: Page, url: string) {
   console.log("################ トップページ");
@@ -100,12 +110,21 @@ async function selectDestinationAndDate(page: Page, destination: string, dateStr
 // 戻り値はtrue=予約ボタンをクリックできた、false=maxAttempts回試してもダメだった
 async function waitForAvailableTrainAndReserve(
   page: Page,
-  targetIndex: number,
+  departureTime: string,
   maxAttempts: number,
 ): Promise<boolean> {
   console.log("################ 空席照会");
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const submitButton = page.locator(".train").nth(targetIndex).locator(".submitButton");
+    // 発車時刻のspan(例: "07:10")を持つ便を探す。表示順(index)には依存しない
+    const train = page.locator(".train").filter({
+      has: page.locator(".trainServiceInfo span", { hasText: new RegExp(`^\\s*${departureTime}\\s*$`) }),
+    });
+
+    // 各便には「指定席」と「指定席（立席）」の枠があるため、立席の枠を除外して探す
+    const submitButton = train
+      .locator(".vacancyInfo")
+      .filter({ hasNotText: "立席" })
+      .locator(".submitButton");
 
     try {
       // reload直後は描画がまだのことがあるので、短い猶予だけ持たせて出現を待つ
