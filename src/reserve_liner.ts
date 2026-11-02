@@ -64,16 +64,17 @@ const opts = program.opts<{
 
 const targetDateStr = opts.today ? todayStr() : opts.date;
 
-const DESTINATION_NAMES: Record<string, string> = {
-  R003: "京王八王子・高尾山口・高幡不動→新宿方面",
-  R004: "橋本・京王多摩センター→新宿方面",
-};
-
-// Slack通知用の実行条件(どの日・どの便を狙ったか)
-function describeRequest(): string {
+// Slack通知用の短いラベル(例: "11/4(水) 07:10")
+function requestLabel(): string {
   const d = targetDateStr;
-  const mode = opts.debug ? "debug(購入しない)" : opts.point ? "ポイント払い" : "通常購入";
-  return `${d.slice(0, 4)}/${d.slice(4, 6)}/${d.slice(6, 8)} ${opts.destination}(${DESTINATION_NAMES[opts.destination]}) ${opts.target}発 / ${mode}`;
+  const date = new Date(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)));
+  const wd = "日月火水木金土"[date.getDay()];
+  return `${date.getMonth() + 1}/${date.getDate()}(${wd}) ${opts.target}`;
+}
+
+// 便の表示内容から列車名(例: 京王ライナー32号)だけを取り出す
+function trainName(trainText: string): string {
+  return trainText.match(/\S*ライナー\S*号/)?.[0] ?? "";
 }
 
 console.log(`予約対象日: ${targetDateStr}`);
@@ -182,9 +183,6 @@ async function confirmPurchase(page: Page, mode: { debug: boolean; point: boolea
 }
 
 async function main() {
-  const startedAt = Date.now();
-  const elapsed = () => `${Math.round((Date.now() - startedAt) / 1000)}秒`;
-
   const browser = await chromium.launch({ headless: false });
   try {
     const page = await browser.newPage();
@@ -197,23 +195,18 @@ async function main() {
 
     if (!reserved) {
       console.log("タイムアウトしました。条件が満たされませんでした。");
-      await notifySlack([
-        ":x: *ライナー予約 失敗(空席なし)*",
-        `• 条件: ${describeRequest()}`,
-        `• ${opts.retry}回リトライしても予約可能になりませんでした(所要 ${elapsed()})`,
-      ]);
+      await notifySlack([`:x: *ライナー予約できず* ${requestLabel()}（満席・${opts.retry}回試行）`]);
       return;
     }
 
     await selectSeatAutoAllocate(page);
     await confirmPurchase(page, { debug: opts.debug, point: opts.point });
 
+    const name = trainName(reserved.trainText);
     await notifySlack([
-      opts.debug ? ":test_tube: *ライナー予約 debug完了(購入はしていません)*" : ":white_check_mark: *ライナー予約 完了*",
-      `• 条件: ${describeRequest()}`,
-      ...(reserved.trainText ? [`• 便: ${reserved.trainText}`] : []),
-      `• ${reserved.attempts}回目で空席を確保(所要 ${elapsed()})`,
-      "• 座席は自動割当です。詳細は購入完了メールを確認してください",
+      opts.debug
+        ? `:test_tube: *ライナー予約テスト* ${requestLabel()} ${name}（購入なし）`
+        : `:white_check_mark: *ライナー予約完了* ${requestLabel()} ${name}`.trimEnd(),
     ]);
   } finally {
     await browser.close();
@@ -223,6 +216,6 @@ async function main() {
 main().catch(async (err) => {
   console.error(err);
   const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
-  await notifySlack([":rotating_light: *ライナー予約 エラーで停止*", `• 条件: ${describeRequest()}`, `• エラー: ${msg}`]);
+  await notifySlack([`:rotating_light: *ライナー予約エラー* ${requestLabel()}`, msg]);
   process.exit(1);
 });
