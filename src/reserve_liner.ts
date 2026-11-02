@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { notifySlack } from "./notify.js";
+import { recordJob } from "./job_status.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
@@ -196,6 +197,7 @@ async function main() {
     if (!reserved) {
       console.log("タイムアウトしました。条件が満たされませんでした。");
       await notifySlack([`:x: *ライナー予約できず* ${requestLabel()}（満席・${opts.retry}回試行）`]);
+      await recordJob("reserve_liner", "failure", `予約できず ${requestLabel()}（満席・${opts.retry}回試行）`);
       return;
     }
 
@@ -208,6 +210,11 @@ async function main() {
         ? `:test_tube: *ライナー予約テスト* ${requestLabel()} ${name}（購入なし）`
         : `:white_check_mark: *ライナー予約完了* ${requestLabel()} ${name}`.trimEnd(),
     ]);
+    await recordJob(
+      "reserve_liner",
+      "success",
+      opts.debug ? `テスト ${requestLabel()} ${name}（購入なし）` : `予約完了 ${requestLabel()} ${name}`.trimEnd(),
+    );
   } finally {
     await browser.close();
   }
@@ -217,5 +224,6 @@ main().catch(async (err) => {
   console.error(err);
   const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
   await notifySlack([`:rotating_light: *ライナー予約エラー* ${requestLabel()}`, msg]);
+  await recordJob("reserve_liner", "failure", `エラー ${requestLabel()}: ${msg}`);
   process.exit(1);
 });
