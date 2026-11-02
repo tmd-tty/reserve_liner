@@ -1,5 +1,5 @@
 /**
- * 実行結果の報告: Slack通知と、ジョブ実行状況ダッシュボード(job_status)への記録
+ * 実行結果の報告: Slack通知と、ダッシュボード(~/workspace/dashboard)への記録
  *
  * どちらも workspace 共通のスクリプトを呼ぶだけで、失敗しても本処理は止めない。
  * (reserve_liner と morning_brief で同じ内容のファイルを使っている)
@@ -11,7 +11,7 @@ import path from "node:path";
 
 const WORKSPACE = path.join(os.homedir(), "workspace");
 const NOTIFY_SCRIPT = process.env.NOTIFY_SCRIPT ?? path.join(WORKSPACE, "shellscripts/bin/slack/notify_webhook.sh");
-const RECORD_SCRIPT = process.env.JOB_STATUS_SCRIPT ?? path.join(WORKSPACE, "job_status/bin/record_job.sh");
+const RECORD_SCRIPT = process.env.JOB_STATUS_SCRIPT ?? path.join(WORKSPACE, "dashboard/bin/record_job.sh");
 
 export type JobStatus = "success" | "failure" | "warning";
 

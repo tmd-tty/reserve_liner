@@ -58,7 +58,7 @@ npm start -- --date 20260602 --retry 200 --debug
 
 + 通知スクリプトは環境変数 `NOTIFY_SCRIPT` で差し替え可能
 + スクリプトが無い・通知に失敗した場合も予約処理自体は止めない
-+ 実行結果は`~/workspace/job_status`にも記録され、http://160.251.250.71/jobs.html で履歴を確認できる
++ 実行結果は`~/workspace/dashboard`にも記録され、http://160.251.250.71/dashboard.html で履歴を確認できる
 
 # .envファイル
 
