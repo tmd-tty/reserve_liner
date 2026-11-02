@@ -3,8 +3,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { notifySlack } from "./notify.js";
-import { recordJob } from "./job_status.js";
+import { notifySlack, recordJob, type JobStatus } from "./report.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
@@ -65,12 +64,32 @@ const opts = program.opts<{
 
 const targetDateStr = opts.today ? todayStr() : opts.date;
 
-// Slack通知用の短いラベル(例: "11/4(水) 07:10")
+// 通知用の短いラベル(例: "11/4(水) 07:10")
 function requestLabel(): string {
   const d = targetDateStr;
   const date = new Date(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)));
   const wd = "日月火水木金土"[date.getDay()];
   return `${date.getMonth() + 1}/${date.getDate()}(${wd}) ${opts.target}`;
+}
+
+// 結果の種類ごとの表示。slack はSlack通知の見出し、label はダッシュボードに載せる短い見出し
+const REPORTS = {
+  reserved: { status: "success", emoji: ":white_check_mark:", slack: "ライナー予約完了", label: "予約完了" },
+  tested: { status: "success", emoji: ":test_tube:", slack: "ライナー予約テスト", label: "テスト" },
+  soldOut: { status: "failure", emoji: ":x:", slack: "ライナー予約できず", label: "予約できず" },
+  error: { status: "failure", emoji: ":rotating_light:", slack: "ライナー予約エラー", label: "エラー" },
+} satisfies Record<string, { status: JobStatus; emoji: string; slack: string; label: string }>;
+
+/**
+ * 結果をSlackとダッシュボードに報告する
+ *   Slack:          ":white_check_mark: *ライナー予約完了* 11/4(水) 07:10 京王ライナー32号" (+エラー詳細の行)
+ *   ダッシュボード: "予約完了 11/4(水) 07:10 京王ライナー32号"
+ */
+async function report(kind: keyof typeof REPORTS, detail = "", errorMessage?: string) {
+  const { status, emoji, slack, label } = REPORTS[kind];
+  const body = `${requestLabel()} ${detail}`.trim();
+  await notifySlack([`${emoji} *${slack}* ${body}`, ...(errorMessage ? [errorMessage] : [])]);
+  await recordJob("reserve_liner", status, `${label} ${body}${errorMessage ? `: ${errorMessage}` : ""}`);
 }
 
 // 便の表示内容から列車名(例: 京王ライナー32号)だけを取り出す
@@ -122,12 +141,12 @@ async function selectDestinationAndDate(page: Page, destination: string, dateStr
 }
 
 // 対象の便が予約可能になるまでリトライし、可能なら予約ボタンをクリックする
-// 戻り値は予約ボタンをクリックできたら{試行回数, 便の表示内容}、maxAttempts回試してもダメならnull
+// 予約ボタンをクリックできたら便の表示内容(取れなければ空文字)を、maxAttempts回試してもダメならnullを返す
 async function waitForAvailableTrainAndReserve(
   page: Page,
   departureTime: string,
   maxAttempts: number,
-): Promise<{ attempts: number; trainText: string } | null> {
+): Promise<string | null> {
   console.log("################ 空席照会");
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // 発車時刻のspan(例: "07:10")を持つ便を探す。表示順(index)には依存しない
@@ -151,7 +170,7 @@ async function waitForAvailableTrainAndReserve(
         .then((t) => t.replace(/\s+/g, " ").trim())
         .catch(() => "");
       await submitButton.click();
-      return { attempts: attempt, trainText };
+      return trainText;
     } catch {
       console.log(`${attempt}回目: 条件を満たしていません。3秒後に更新します...`);
       await page.reload();
@@ -192,29 +211,19 @@ async function main() {
     await login(page, process.env.KEIO_ID!, process.env.KEIO_PASSWORD!);
     await selectDestinationAndDate(page, opts.destination, targetDateStr);
 
-    const reserved = await waitForAvailableTrainAndReserve(page, opts.target, opts.retry);
+    const trainText = await waitForAvailableTrainAndReserve(page, opts.target, opts.retry);
 
-    if (!reserved) {
+    if (trainText === null) {
       console.log("タイムアウトしました。条件が満たされませんでした。");
-      await notifySlack([`:x: *ライナー予約できず* ${requestLabel()}（満席・${opts.retry}回試行）`]);
-      await recordJob("reserve_liner", "failure", `予約できず ${requestLabel()}（満席・${opts.retry}回試行）`);
+      await report("soldOut", `満席・${opts.retry}回試行`);
       return;
     }
 
     await selectSeatAutoAllocate(page);
     await confirmPurchase(page, { debug: opts.debug, point: opts.point });
 
-    const name = trainName(reserved.trainText);
-    await notifySlack([
-      opts.debug
-        ? `:test_tube: *ライナー予約テスト* ${requestLabel()} ${name}（購入なし）`
-        : `:white_check_mark: *ライナー予約完了* ${requestLabel()} ${name}`.trimEnd(),
-    ]);
-    await recordJob(
-      "reserve_liner",
-      "success",
-      opts.debug ? `テスト ${requestLabel()} ${name}（購入なし）` : `予約完了 ${requestLabel()} ${name}`.trimEnd(),
-    );
+    const name = trainName(trainText);
+    await (opts.debug ? report("tested", `${name}（購入なし）`) : report("reserved", name));
   } finally {
     await browser.close();
   }
@@ -223,7 +232,6 @@ async function main() {
 main().catch(async (err) => {
   console.error(err);
   const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
-  await notifySlack([`:rotating_light: *ライナー予約エラー* ${requestLabel()}`, msg]);
-  await recordJob("reserve_liner", "failure", `エラー ${requestLabel()}: ${msg}`);
+  await report("error", undefined, msg);
   process.exit(1);
 });
