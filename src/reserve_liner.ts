@@ -82,8 +82,8 @@ const REPORTS = {
 
 /**
  * 結果をSlackとダッシュボードに報告する
- *   Slack:          ":white_check_mark: *ライナー予約完了* 11/4(水) 07:10 京王ライナー32号" (+エラー詳細の行)
- *   ダッシュボード: "予約完了 11/4(水) 07:10 京王ライナー32号"
+ *   Slack:          ":white_check_mark: *ライナー予約完了* 11/4(水) 07:10 京王ライナー32号 3号車 5番A席" (+エラー詳細の行)
+ *   ダッシュボード: "予約完了 11/4(水) 07:10 京王ライナー32号 3号車 5番A席"
  */
 async function report(kind: keyof typeof REPORTS, detail = "", errorMessage?: string) {
   const { status, emoji, slack, label } = REPORTS[kind];
@@ -180,18 +180,40 @@ async function waitForAvailableTrainAndReserve(
   return null;
 }
 
+/**
+ * 画面に出ている座席(例: "3号車 5番A席")を探す。見つからなければ空文字(予約は止めない)
+ * 購入確認の画面と購入完了の画面のどちらにも出るはずなので、完了の画面を優先し、取れなければ確認の画面の値を使う
+ */
+async function readSeat(page: Page): Promise<string> {
+  const text = await page.locator("body").innerText({ timeout: 3000 }).catch(() => "");
+  const lines = text.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // 「号車」を含む行(または「号車」の行と次の行)から、号車と席番号を取り出す
+  let carOnly = "";
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].includes("号車")) continue;
+    const joined = `${lines[i]} ${lines[i + 1] ?? ""}`;
+    const m = joined.match(/(\d{1,2})\s*号車\s*[:：]?\s*([0-9０-９]{1,2}\s*番?\s*[A-DＡ-Ｄ]?\s*席?)?/);
+    if (m?.[2]) return `${m[1]}号車 ${m[2].replace(/\s+/g, "")}`; // 席番号まで取れたらそれを使う
+    if (m && !carOnly) carOnly = `${m[1]}号車`;                     // 号車だけのときは覚えておき、続きを探す
+  }
+  return carOnly;
+}
+
 async function selectSeatAutoAllocate(page: Page) {
   console.log("################ 座席選択画面");
   await page.locator(byId("purchaseSeatSelectMethod:autoAllocateBtn")).click();
 }
 
-async function confirmPurchase(page: Page, mode: { debug: boolean; point: boolean }) {
+// 購入する。戻り値は割り当てられた座席(取れなければ空文字)
+async function confirmPurchase(page: Page, mode: { debug: boolean; point: boolean }): Promise<string> {
   console.log("################ 購入画面");
   await page.locator(byId("purchaseSettlementConfirm:agreement")).click();
+  const seatOnConfirm = await readSeat(page);
+  console.log(`座席(購入確認の画面): ${seatOnConfirm || "見つからず"}`);
 
   if (mode.debug) {
     console.log("debugモードで終了しました。");
-    return;
+    return seatOnConfirm;
   }
 
   const buttonId = mode.point
@@ -200,6 +222,9 @@ async function confirmPurchase(page: Page, mode: { debug: boolean; point: boolea
   await page.locator(byId(buttonId)).click();
   // 購入確定リクエストの完了を待つ
   await page.waitForLoadState("networkidle");
+  const seatOnDone = await readSeat(page);
+  console.log(`座席(購入完了の画面): ${seatOnDone || "見つからず"}`);
+  return seatOnDone || seatOnConfirm;
 }
 
 async function main() {
@@ -220,9 +245,10 @@ async function main() {
     }
 
     await selectSeatAutoAllocate(page);
-    await confirmPurchase(page, { debug: opts.debug, point: opts.point });
+    const seat = await confirmPurchase(page, { debug: opts.debug, point: opts.point });
 
-    const name = trainName(trainText);
+    // 座席が取れれば「京王ライナー32号 3号車 5番A席」の形で通知する
+    const name = [trainName(trainText), seat].filter(Boolean).join(" ");
     await (opts.debug ? report("tested", `${name}（購入なし）`) : report("reserved", name));
   } finally {
     await browser.close();
