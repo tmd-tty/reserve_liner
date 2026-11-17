@@ -76,6 +76,8 @@ function requestLabel(): string {
 const REPORTS = {
   reserved: { status: "success", emoji: ":white_check_mark:", slack: "ライナー予約完了", label: "予約完了" },
   tested: { status: "success", emoji: ":test_tube:", slack: "ライナー予約テスト", label: "テスト" },
+  // テスト(--debug)で空席がなかったとき。本番の「予約できず」と紛れないよう、テストとして通知する
+  testedSoldOut: { status: "success", emoji: ":test_tube:", slack: "ライナー予約テスト", label: "テスト" },
   soldOut: { status: "failure", emoji: ":x:", slack: "ライナー予約できず", label: "予約できず" },
   error: { status: "failure", emoji: ":rotating_light:", slack: "ライナー予約エラー", label: "エラー" },
 } satisfies Record<string, { status: JobStatus; emoji: string; slack: string; label: string }>;
@@ -236,7 +238,9 @@ async function main() {
 
     if (trainText === null) {
       console.log("タイムアウトしました。条件が満たされませんでした。");
-      await report("soldOut", `満席・${opts.retry}回試行`);
+      await (opts.debug
+        ? report("testedSoldOut", `空席なし・${opts.retry}回試行（購入なし）`)
+        : report("soldOut", `満席・${opts.retry}回試行`));
       return;
     }
 
